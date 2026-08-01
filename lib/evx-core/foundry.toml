@@ -1,0 +1,24 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+
+optimizer = true
+optimizer_runs = 1
+bytecode_hash = "none"
+
+auto_detect_remappings = false     
+remappings = [
+  "forge-std/=lib/forge-std/src/",
+  "@openzeppelin/=lib/openzeppelin-contracts/",
+  "@openzeppelin-contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable",
+  "@evx-core/=src"
+]
+
+[rpc_endpoints]
+mainnet = "https://eth-mainnet.g.alchemy.com/v3/YOUR_KEY"
+hoodi = "https://hoodi.infura.io/v3/YOUR_KEY"
+sepolia = "https://sepolia.infura.io/v3/YOUR_KEY"
+localhost = "http://127.0.0.1:8545"
+
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
