@@ -301,7 +301,7 @@ contract NonfungiblePositionManager is
         require(positionLiquidity >= params.liquidity);
 
         PoolAddress.PoolKey memory poolKey = _poolIdToPoolKey[position.poolId];
-        IEvxPool pool = IEvxPool(PoolAddress.computeAddress(factory, poolKey));
+        IEvxPool pool = IEvxPool(PoolAddress.resolve(factory, poolKey));
         (amount0, amount1) = pool.burn(position.tickLower, position.tickUpper, params.liquidity);
 
         require(amount0 >= params.amount0Min && amount1 >= params.amount1Min, 'Price slippage check');
@@ -354,7 +354,7 @@ contract NonfungiblePositionManager is
 
         Position storage position = _positions[params.tokenId];
         PoolAddress.PoolKey memory poolKey = _poolIdToPoolKey[position.poolId];
-        IEvxPool pool = IEvxPool(PoolAddress.computeAddress(factory, poolKey));
+        IEvxPool pool = IEvxPool(PoolAddress.resolve(factory, poolKey));
 
         (uint128 tokensOwed0, uint128 tokensOwed1) = (position.tokensOwed0, position.tokensOwed1);
 

@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import '@evx-core/interfaces/IEvxFactory.sol';
+
 /**
  * @title PoolAddress
  * @notice Provides helper functions for computing Evx pool addresses and ordering tokens.
  * @dev Uses CREATE2 logic adapted to Evx’s minimal‑proxy (EIP‑1167) pools.
+ *      Prefer [`resolve`] for live pools — `POOL_INIT_CODE_HASH` embeds the pool
+ *      implementation address and drifts whenever a new `EvxPool` is deployed.
  */
 library PoolAddress {
     /**
@@ -75,5 +79,26 @@ library PoolAddress {
                 )
             )
         )));
+    }
+
+    /**
+     * @notice Resolves a live pool via factory registry, falling back to CREATE2.
+     * @dev `getPool` is authoritative for EIP-1167 clones (init-code hash depends on impl).
+     *      Fallback preserves etched/mock fixtures that only seed `computeAddress`.
+     *      Skip the registry call when `factory` has no code (unit-test etch harnesses).
+     */
+    function resolve(address factory, PoolKey memory key) internal view returns (address pool) {
+        require(key.token0 < key.token1);
+        if (factory.code.length > 0) {
+            try IEvxFactory(factory).getPool(key.token0, key.token1, key.fee) returns (address p) {
+                pool = p;
+            } catch {
+                // Fall through to CREATE2 — preserves etched/mock fixtures and
+                // tolerates non-factory contracts at `factory`.
+            }
+        }
+        if (pool == address(0)) {
+            pool = computeAddress(factory, key);
+        }
     }
 }

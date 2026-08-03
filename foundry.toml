@@ -11,6 +11,7 @@ auto_detect_remappings = false
 remappings = [
   "forge-std/=lib/forge-std/src/",
   "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+  "@openzeppelin-contracts-upgradeable/=../evx-core/lib/openzeppelin-contracts-upgradeable",
   "base64-sol/=lib/base64/",
   "@evx-core/=lib/evx-core/src/",
   "@evx-periphery/=src/"

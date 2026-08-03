@@ -92,7 +92,7 @@ abstract contract LiquidityManagement is IEvxMintCallback, PeripheryImmutableSta
             fee: params.fee
         });
 
-        pool = IEvxPool(PoolAddress.computeAddress(factory, poolKey));
+        pool = IEvxPool(PoolAddress.resolve(factory, poolKey));
 
         // compute the liquidity amount
         {

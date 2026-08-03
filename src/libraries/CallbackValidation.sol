@@ -42,7 +42,7 @@ library CallbackValidation {
         view
         returns (IEvxPool pool)
     {
-        pool = IEvxPool(PoolAddress.computeAddress(factory, poolKey));
+        pool = IEvxPool(PoolAddress.resolve(factory, poolKey));
         require(msg.sender == address(pool), 'CallbackValidation: INVALID_SENDER');
     }
 }
