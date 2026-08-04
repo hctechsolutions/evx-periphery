@@ -111,6 +111,34 @@ contract PositionHarnessTest is Test {
         assertEq(liq, liquidity);
     }
 
+    /// @notice Story 5.4 / NFR3: report gas of update_range vs notional (2e18).
+    /// @dev Threshold 0.5% is a reported metric. CI fails only if this controlled fixture
+    ///      clearly exceeds it (gas_cost_wei / notional > 0.005 at 1 gwei equivalent).
+    function testRebalanceGasNfr3Reported() public {
+        (uint256 tokenId, uint128 liquidity, , ) = _mintRange(TICK_LOWER, TICK_UPPER);
+
+        uint256 gasBefore = gasleft();
+        uint256 newTokenId = _updateRange(tokenId, liquidity, TICK_LOWER_UPDATED, TICK_UPPER_UPDATED);
+        uint256 gasUsed = gasBefore - gasleft();
+
+        // Notional of the rebalanced position (fixture amounts).
+        uint256 notional = 2 * AMOUNT_DESIRED;
+        // Report at 1 gwei: gas_cost = gasUsed * 1e9.
+        uint256 gasPriceWei = 1e9;
+        uint256 gasCostWei = gasUsed * gasPriceWei;
+        // NFR3: gas_cost / notional < 0.5% ⇒ gasCostWei * 200 < notional.
+        bool exceeds = gasCostWei * 200 > notional;
+
+        emit log_named_uint("rebalance_gas_used", gasUsed);
+        emit log_named_uint("rebalance_gas_cost_wei_at_1_gwei", gasCostWei);
+        emit log_named_uint("rebalance_notional", notional);
+        emit log_named_string("nfr3_exceeds_0_5pct", exceeds ? "true" : "false");
+
+        assertEq(newTokenId, 2, "updated nft id");
+        // Controlled Anvil fixture must stay under NFR3 at 1 gwei vs 2e18 notional.
+        assertFalse(exceeds, "NFR3: controlled fixture gas must be < 0.5% of notional at 1 gwei");
+    }
+
     function _mintRange(int24 tickLower, int24 tickUpper)
         internal
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
