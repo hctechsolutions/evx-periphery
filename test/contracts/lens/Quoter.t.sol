@@ -12,6 +12,9 @@ import {IEvxPool} from "@evx-core/interfaces/IEvxPool.sol";
 import {IEvxFactory} from "@evx-core/interfaces/IEvxFactory.sol";
 import {InsufficientLiquidity} from "@evx-periphery/libraries/QuoterErrors.sol";
 import {PoolQuoteFailed} from "@evx-periphery/libraries/QuoterErrors.sol";
+import {ZeroLiquidity} from "@evx-periphery/libraries/QuoterErrors.sol";
+import {InvalidRoute} from "@evx-periphery/libraries/QuoterErrors.sol";
+import {ArithmeticInternal} from "@evx-periphery/libraries/QuoterErrors.sol";
 
 
 contract MockPool is IEvxPool {
@@ -329,19 +332,19 @@ contract QuoterTest is Test {
     }
 
     /**
-     * @notice Test case 1a: Verifica se o Quoter retorna InsufficientLiquidity
-     * quando amount0Delta > 0 e amount1Delta = type(int256).min
-     * 
-     * Antes da correção, isso causaria panic na linha 74 do Quoter.sol:
-     * uint256(-amount1Delta) quando amount1Delta = type(int256).min
-     * 
-     * Agora o Quoter valida e retorna InsufficientLiquidity() antes da conversão
+     * @notice Test case 1a: Quoter returns InsufficientLiquidity when amount0Delta > 0
+     * and amount1Delta = type(int256).min
+     *
+     * Before the guard, this panicked in Quoter.sol on:
+     * uint256(-amount1Delta) when amount1Delta = type(int256).min
+     *
+     * Quoter now validates and reverts InsufficientLiquidity() before the cast
      */
     function test_InsufficientLiquidity_Amount1Delta() external {
         uint256 amountIn = 100;
         
-        // Criar um mock pool que retorna amount0Delta > 0 e amount1Delta = type(int256).min
-        // Isso testa a validação antes da linha 74: uint256(-amount1Delta)
+        // Mock pool returns amount0Delta > 0 and amount1Delta = type(int256).min
+        // Exercises the guard before: uint256(-amount1Delta)
         MockPoolPanic mockPool = new MockPoolPanic();
         mockPool.setPanicMode(true, false); // amount0Delta > 0, amount1Delta = min
         bytes32 salt = keccak256(abi.encodePacked(TOKEN0, TOKEN1, FEE));
@@ -359,18 +362,15 @@ contract QuoterTest is Test {
         MockPoolPanic(poolAddr).setTokens(TOKEN0, TOKEN1);
         MockPoolPanic(poolAddr).setPanicMode(true, false);
         
-        // Mockar o Factory para retornar o endereço correto quando chamado
+        // Mock Factory to return the etched pool address
         vm.mockCall(
             FACTORY,
             abi.encodeWithSelector(IEvxFactory.getPool.selector, TOKEN0, TOKEN1, FEE),
             abi.encode(poolAddr)
         );
         
-        // Tentar fazer quote - deve retornar PoolQuoteFailed com InsufficientLiquidity dentro
-        // O Quoter agora valida antes da conversão e retorna erro específico
-        // O parseRevertReason envolve o erro em PoolQuoteFailed
-        bytes memory insufficientLiquidityError = abi.encodeWithSelector(InsufficientLiquidity.selector);
-        vm.expectRevert(abi.encodeWithSelector(PoolQuoteFailed.selector, insufficientLiquidityError));
+        // Post-RCA (7.1): cause = insufficient_liquidity → typed InsufficientLiquidity (no PoolQuoteFailed wrap)
+        vm.expectRevert(InsufficientLiquidity.selector);
         quoter.quoteExactInputSingle(
             IQuoter.QuoteExactInputSingleParams({
                 tokenIn: TOKEN0,
@@ -383,19 +383,19 @@ contract QuoterTest is Test {
     }
     
     /**
-     * @notice Test case 1b: Verifica se o Quoter retorna InsufficientLiquidity
-     * quando amount0Delta <= 0 e amount0Delta = type(int256).min
-     * 
-     * Antes da correção, isso causaria panic na linha 75 do Quoter.sol:
-     * uint256(-amount0Delta) quando amount0Delta = type(int256).min
-     * 
-     * Agora o Quoter valida e retorna InsufficientLiquidity() antes da conversão
+     * @notice Test case 1b: Quoter returns InsufficientLiquidity when amount0Delta =
+     * type(int256).min (and amount0Delta <= 0 path)
+     *
+     * Before the guard, this panicked in Quoter.sol on:
+     * uint256(-amount0Delta) when amount0Delta = type(int256).min
+     *
+     * Quoter now validates and reverts InsufficientLiquidity() before the cast
      */
     function test_InsufficientLiquidity_Amount0Delta() external {
         uint256 amountIn = 100;
         
-        // Criar um mock pool que retorna amount0Delta = type(int256).min e amount1Delta > 0
-        // Isso testa a validação antes da linha 75: uint256(-amount0Delta)
+        // Mock pool returns amount0Delta = type(int256).min and amount1Delta > 0
+        // Exercises the guard before: uint256(-amount0Delta)
         MockPoolPanic mockPool = new MockPoolPanic();
         mockPool.setPanicMode(false, true); // amount0Delta = min, amount1Delta > 0
         bytes32 salt = keccak256(abi.encodePacked(TOKEN0, TOKEN1, FEE));
@@ -413,17 +413,14 @@ contract QuoterTest is Test {
         MockPoolPanic(poolAddr).setTokens(TOKEN0, TOKEN1);
         MockPoolPanic(poolAddr).setPanicMode(false, true);
         
-        // Mockar o Factory para retornar o endereço correto quando chamado
+        // Mock Factory to return the etched pool address
         vm.mockCall(
             FACTORY,
             abi.encodeWithSelector(IEvxFactory.getPool.selector, TOKEN0, TOKEN1, FEE),
             abi.encode(poolAddr)
         );
         
-        // Tentar fazer quote - deve retornar PoolQuoteFailed com InsufficientLiquidity dentro
-        // O Quoter agora valida antes da conversão e retorna erro específico
-        bytes memory insufficientLiquidityError = abi.encodeWithSelector(InsufficientLiquidity.selector);
-        vm.expectRevert(abi.encodeWithSelector(PoolQuoteFailed.selector, insufficientLiquidityError));
+        vm.expectRevert(InsufficientLiquidity.selector);
         quoter.quoteExactInputSingle(
             IQuoter.QuoteExactInputSingleParams({
                 tokenIn: TOKEN0,
@@ -436,13 +433,13 @@ contract QuoterTest is Test {
     }
     
     /**
-     * @notice Test case 1c: Verifica se ambos os casos (amount0Delta e amount1Delta = min)
-     * retornam InsufficientLiquidity corretamente
+     * @notice Test case 1c: both amount0Delta and amount1Delta = min paths
+     * return InsufficientLiquidity
      */
     function test_InsufficientLiquidity_BothAmounts() external {
         uint256 amountIn = 100;
         
-        // Teste 1: amount1Delta = type(int256).min
+        // Case 1: amount1Delta = type(int256).min
         {
             MockPoolPanic mockPool = new MockPoolPanic();
             bytes32 salt = keccak256(abi.encodePacked(TOKEN0, TOKEN1, FEE));
@@ -466,8 +463,7 @@ contract QuoterTest is Test {
                 abi.encode(poolAddr)
             );
             
-            bytes memory insufficientLiquidityError = abi.encodeWithSelector(InsufficientLiquidity.selector);
-            vm.expectRevert(abi.encodeWithSelector(PoolQuoteFailed.selector, insufficientLiquidityError));
+            vm.expectRevert(InsufficientLiquidity.selector);
             quoter.quoteExactInputSingle(
                 IQuoter.QuoteExactInputSingleParams({
                     tokenIn: TOKEN0,
@@ -479,7 +475,7 @@ contract QuoterTest is Test {
             );
         }
         
-        // Teste 2: amount0Delta = type(int256).min
+        // Case 2: amount0Delta = type(int256).min
         {
             MockPoolPanic mockPool2 = new MockPoolPanic();
             bytes32 salt2 = keccak256(abi.encodePacked(TOKEN0, TOKEN1, FEE));
@@ -503,8 +499,7 @@ contract QuoterTest is Test {
                 abi.encode(poolAddr2)
             );
             
-            bytes memory insufficientLiquidityError2 = abi.encodeWithSelector(InsufficientLiquidity.selector);
-            vm.expectRevert(abi.encodeWithSelector(PoolQuoteFailed.selector, insufficientLiquidityError2));
+            vm.expectRevert(InsufficientLiquidity.selector);
             quoter.quoteExactInputSingle(
                 IQuoter.QuoteExactInputSingleParams({
                     tokenIn: TOKEN0,
@@ -516,74 +511,195 @@ contract QuoterTest is Test {
             );
         }
     }
-    
+
+    /// @notice Known reproducible mechanism (Task 0A): int256.min → InsufficientLiquidity
+    /// @dev Not proof of identity with residual/prod Panic path (Task 0B / SqrtPriceMath).
+    function test_RCA_Int256Min_IsInsufficientLiquidity_NotArithmeticInternal() external {
+        MockPoolPanic mockPool = new MockPoolPanic();
+        bytes32 salt = keccak256(abi.encodePacked(TOKEN0, TOKEN1, FEE));
+        address poolAddr = address(uint160(uint256(
+            keccak256(
+                abi.encodePacked(
+                    hex"ff",
+                    FACTORY,
+                    salt,
+                    PoolAddress.POOL_INIT_CODE_HASH
+                )
+            )
+        )));
+        vm.etch(poolAddr, address(mockPool).code);
+        MockPoolPanic(poolAddr).setTokens(TOKEN0, TOKEN1);
+        MockPoolPanic(poolAddr).setPanicMode(true, false);
+
+        vm.mockCall(
+            FACTORY,
+            abi.encodeWithSelector(IEvxFactory.getPool.selector, TOKEN0, TOKEN1, FEE),
+            abi.encode(poolAddr)
+        );
+
+        vm.expectRevert(InsufficientLiquidity.selector);
+        quoter.quoteExactInputSingle(
+            IQuoter.QuoteExactInputSingleParams({
+                tokenIn: TOKEN0,
+                tokenOut: TOKEN1,
+                fee: FEE,
+                amountIn: 100,
+                sqrtPriceLimitX96: 0
+            })
+        );
+    }
+
+    /// @notice Quote path: pool callback with (0,0) deltas → ZeroLiquidity (AD-26)
+    function test_ZeroLiquidity_FromZeroDeltas_QuotePath() external {
+        MockPoolZeroDeltas mockPool = new MockPoolZeroDeltas();
+        bytes32 salt = keccak256(abi.encodePacked(TOKEN0, TOKEN1, FEE));
+        address poolAddr = address(uint160(uint256(
+            keccak256(
+                abi.encodePacked(
+                    hex"ff",
+                    FACTORY,
+                    salt,
+                    PoolAddress.POOL_INIT_CODE_HASH
+                )
+            )
+        )));
+        vm.etch(poolAddr, address(mockPool).code);
+        MockPoolZeroDeltas(poolAddr).setTokens(TOKEN0, TOKEN1);
+
+        vm.mockCall(
+            FACTORY,
+            abi.encodeWithSelector(IEvxFactory.getPool.selector, TOKEN0, TOKEN1, FEE),
+            abi.encode(poolAddr)
+        );
+
+        vm.expectRevert(ZeroLiquidity.selector);
+        quoter.quoteExactInputSingle(
+            IQuoter.QuoteExactInputSingleParams({
+                tokenIn: TOKEN0,
+                tokenOut: TOKEN1,
+                fee: FEE,
+                amountIn: 100,
+                sqrtPriceLimitX96: 0
+            })
+        );
+    }
+
+    /// @notice Opaque Panic from pool stays PoolQuoteFailed — NOT auto-mapped to ArithmeticInternal
+    function test_OpaquePanic_RemainsPoolQuoteFailed_NotArithmeticInternal() external {
+        MockPoolRawPanic mockPool = new MockPoolRawPanic();
+        bytes32 salt = keccak256(abi.encodePacked(TOKEN0, TOKEN1, FEE));
+        address poolAddr = address(uint160(uint256(
+            keccak256(
+                abi.encodePacked(
+                    hex"ff",
+                    FACTORY,
+                    salt,
+                    PoolAddress.POOL_INIT_CODE_HASH
+                )
+            )
+        )));
+        vm.etch(poolAddr, address(mockPool).code);
+        MockPoolRawPanic(poolAddr).setTokens(TOKEN0, TOKEN1);
+
+        vm.mockCall(
+            FACTORY,
+            abi.encodeWithSelector(IEvxFactory.getPool.selector, TOKEN0, TOKEN1, FEE),
+            abi.encode(poolAddr)
+        );
+
+        bytes memory panic11 = abi.encodeWithSignature("Panic(uint256)", uint256(0x11));
+        vm.expectRevert(abi.encodeWithSelector(PoolQuoteFailed.selector, panic11));
+        quoter.quoteExactInputSingle(
+            IQuoter.QuoteExactInputSingleParams({
+                tokenIn: TOKEN0,
+                tokenOut: TOKEN1,
+                fee: FEE,
+                amountIn: 100,
+                sqrtPriceLimitX96: 0
+            })
+        );
+    }
+
+    /// @notice Forced emitibility: AD-26 categories are distinct custom errors
+    function test_AD26_Emitibility_ForcedCategories() external {
+        QuoterErrorEmitter emitter = new QuoterErrorEmitter();
+        vm.expectRevert(ZeroLiquidity.selector);
+        emitter.emitZeroLiquidity();
+        vm.expectRevert(InsufficientLiquidity.selector);
+        emitter.emitInsufficientLiquidity();
+        vm.expectRevert(InvalidRoute.selector);
+        emitter.emitInvalidRoute();
+        vm.expectRevert(ArithmeticInternal.selector);
+        emitter.emitArithmeticInternal();
+    }
+
+    function test_PoolNotFound_BubblesTyped() external {
+        vm.mockCall(
+            FACTORY,
+            abi.encodeWithSelector(IEvxFactory.getPool.selector, TOKEN0, TOKEN1, FEE),
+            abi.encode(address(0))
+        );
+        vm.expectRevert(InvalidRoute.selector);
+        quoter.quoteExactInputSingle(
+            IQuoter.QuoteExactInputSingleParams({
+                tokenIn: TOKEN0,
+                tokenOut: TOKEN1,
+                fee: FEE,
+                amountIn: 100,
+                sqrtPriceLimitX96: 0
+            })
+        );
+    }
+
     /**
-     * @notice Teste: verifica comportamento de conversão de int256 negativo para uint256
-     * 
-     * Este teste verifica se a conversão uint256(-amount1Delta) funciona corretamente
-     * para valores válidos e se pode causar problemas com valores extremos.
+     * @notice Checks int256 → uint256 negation for valid negative values
+     * and documents why type(int256).min is unsafe
      */
     function test_Int256ToUint256Conversion() external pure {
-        // Teste 1: Conversão válida de int256 negativo para uint256
+        // Case 1: valid negative int256 → uint256
         int256 negativeValue = -100;
         uint256 positiveValue = uint256(-negativeValue);
         assertEq(positiveValue, 100);
         
-        // Teste 2: Conversão de valor grande mas válido
+        // Case 2: large but valid negative value
         int256 largeNegative = -int256(uint256(type(uint128).max));
         uint256 largePositive = uint256(-largeNegative);
         assertEq(largePositive, type(uint128).max);
         
-        // Nota: type(int256).min não pode ser negado porque -type(int256).min
-        // = 2^255 que não cabe em int256, causando overflow
+        // Note: type(int256).min cannot be negated because -type(int256).min
+        // = 2^255 which does not fit in int256 (overflow / Panic)
     }
     
     /**
-     * @notice Teste alternativo: verifica se a conversão uint256(-amount1Delta) funciona
-     * quando amount1Delta é um valor válido mas grande
+     * @notice Confirms uint256(-amount1Delta) works for a large but valid negative delta
      */
     function test_CallbackWithLargeNegativeAmount() external {
-        // Testar com um valor grande mas válido
+        // Large but valid negative value
         int256 amount1Delta = -int256(uint256(type(uint128).max));
         
-        // Esta conversão deve funcionar
+        // This cast must succeed
         uint256 result = uint256(-amount1Delta);
         assertEq(result, type(uint128).max);
     }
 
     /**
-     * @notice Test case 2: Verifica se o Quoter retorna InsufficientLiquidity quando a Pool
-     * retorna valores que indicam falta de liquidez (mesmo que não seja type(int256).min)
-     * 
-     * Nota: Este teste verifica que o mock pool com liquidez zero retorna valores válidos,
-     * mas o comportamento real da Pool seria reverter com NoLiquidity() se validado no swap().
-     * Como o mock não implementa essa validação, o swap retorna valores normais.
-     * 
-     * O teste real de InsufficientLiquidity está nos testes test_InsufficientLiquidity_*
-     * que testam o caso específico de type(int256).min.
+     * @notice Extreme amountDelta / int256.min coverage lives in test_InsufficientLiquidity_*
+     *         and test_RCA_Int256Min_*. Zero-delta AD-26 path: test_ZeroLiquidity_FromZeroDeltas_QuotePath.
+     *         Core NoLiquidity → tipagem: handoff 7.2.
      */
     function test_DivisionByZeroWithZeroLiquidity() external {
-        // Este teste não é mais relevante porque:
-        // 1. A Pool real validaria liquidez zero no swap() e reverteria com NoLiquidity()
-        // 2. O mock pool não implementa essa validação, então retorna valores normais
-        // 3. O caso real de InsufficientLiquidity é testado em test_InsufficientLiquidity_*
-        
-        // Se quisermos testar divisão por zero, precisaríamos de um mock que realmente cause
-        // divisão por zero nas bibliotecas SqrtPriceMath, o que é difícil de simular corretamente
-        
-        // Por enquanto, este teste é removido pois não adiciona valor real
-        // Os testes test_InsufficientLiquidity_* cobrem o caso importante de valores extremos
+        vm.skip(true);
     }
 }
 
 /**
- * @notice Mock pool que retorna type(int256).min para testar conversão perigosa
+ * @notice Mock pool that returns type(int256).min to exercise the unsafe cast path
  */
 contract MockPoolPanic is IEvxPool {
     address private _token0;
     address private _token1;
-    bool private _panicAmount0Delta; // Se true, retorna type(int256).min para amount0Delta
-    bool private _panicAmount1Delta; // Se true, retorna type(int256).min para amount1Delta
+    bool private _panicAmount0Delta; // If true, amount0Delta = type(int256).min
+    bool private _panicAmount1Delta; // If true, amount1Delta = type(int256).min
     
     function setTokens(address token0_, address token1_) external {
         _token0 = token0_;
@@ -634,20 +750,20 @@ contract MockPoolPanic is IEvxPool {
         bytes calldata data
     ) external override returns (int256, int256)
     {
-        // Configurar amount0Delta e amount1Delta baseado no modo de panic
+        // Set amount0Delta / amount1Delta from panic mode
         int256 amount0Delta;
         int256 amount1Delta;
         
         if (_panicAmount0Delta) {
-            // Retornar type(int256).min para amount0Delta (testa linha 75: uint256(-amount0Delta))
+            // amount0Delta = type(int256).min (guard before uint256(-amount0Delta))
             amount0Delta = type(int256).min;
-            amount1Delta = 100; // Valor positivo para garantir que amount0Delta <= 0 seja usado
+            amount1Delta = 100; // positive so the amount0Delta <= 0 branch is used
         } else if (_panicAmount1Delta) {
-            // Retornar type(int256).min para amount1Delta (testa linha 74: uint256(-amount1Delta))
-            amount0Delta = 100; // Valor positivo para garantir que amount0Delta > 0 seja usado
+            // amount1Delta = type(int256).min (guard before uint256(-amount1Delta))
+            amount0Delta = 100; // positive so the amount0Delta > 0 branch is used
             amount1Delta = type(int256).min;
         } else {
-            // Caso padrão (não deve acontecer nos testes)
+            // Default (should not occur in these tests)
             amount0Delta = 100;
             amount1Delta = -200;
         }
@@ -656,7 +772,7 @@ contract MockPoolPanic is IEvxPool {
         return (0, 0);
     }
     
-    // Implementações mínimas necessárias
+    // Minimal stubs required by IEvxPool
     function observe(uint32[] calldata) external pure override returns (int56[] memory, uint160[] memory) {}
     function liquidity() external pure override returns (uint128) { return 0; }
     function factory() external pure override returns (address) { return address(0); }
@@ -680,7 +796,7 @@ contract MockPoolPanic is IEvxPool {
 }
 
 /**
- * @notice Mock pool com liquidity zero para testar divisão por zero
+ * @notice Mock pool with zero liquidity (placeholder for division-by-zero experiments)
  */
 contract MockPoolZeroLiquidity is IEvxPool {
     address private _token0;
@@ -723,7 +839,7 @@ contract MockPoolZeroLiquidity is IEvxPool {
     }
     
     function liquidity() external pure override returns (uint128) {
-        return 0; // Liquidity zero para testar divisão por zero
+        return 0; // Zero liquidity for division-by-zero experiments
     }
     
     function swap(
@@ -734,8 +850,8 @@ contract MockPoolZeroLiquidity is IEvxPool {
         bytes calldata data
     ) external override returns (int256, int256)
     {
-        // Simular um swap que tenta usar liquidity zero
-        // Isso pode causar divisão por zero em SqrtPriceMath ou SwapMath
+        // Simulate a swap that would use zero liquidity
+        // (a real SqrtPriceMath/SwapMath path could divide by zero)
         int256 amount0Delta = amountSpecified > 0 ? int256(uint256(amountSpecified)) : int256(0);
         int256 amount1Delta = amountSpecified > 0 ? -int256(uint256(amountSpecified) * 2) : int256(uint256(-amountSpecified));
         
@@ -743,7 +859,7 @@ contract MockPoolZeroLiquidity is IEvxPool {
         return (0, 0);
     }
     
-    // Implementações mínimas necessárias
+    // Minimal stubs required by IEvxPool
     function observe(uint32[] calldata) external pure override returns (int56[] memory, uint160[] memory) {}
     function factory() external pure override returns (address) { return address(0); }
     function fee() external pure override returns (uint24) { return 3000; }
@@ -763,4 +879,188 @@ contract MockPoolZeroLiquidity is IEvxPool {
     function burn(int24, int24, uint128) external pure returns (uint256, uint256) {}
     function flash(address, uint256, uint256, bytes calldata) external {}
     function increaseObservationCardinalityNext(uint16) external {}
+}
+
+/**
+ * @notice Mock pool that calls back with (0,0) deltas → Quoter ZeroLiquidity
+ */
+contract MockPoolZeroDeltas is IEvxPool {
+    address private _token0;
+    address private _token1;
+
+    function setTokens(address token0_, address token1_) external {
+        _token0 = token0_;
+        _token1 = token1_;
+    }
+
+    function token0() external view override returns (address) {
+        return _token0;
+    }
+
+    function token1() external view override returns (address) {
+        return _token1;
+    }
+
+    function slot0()
+        external
+        pure
+        override
+        returns (uint160, int24, uint16, uint16, uint16, uint8, bool)
+    {
+        return (uint160(FixedPoint96.Q96), 0, 0, 0, 0, 0, true);
+    }
+
+    function tickBitmap(int16) external pure override returns (uint256) {
+        return 0;
+    }
+
+    function tickSpacing() external pure override returns (int24) {
+        return 60;
+    }
+
+    function liquidity() external pure override returns (uint128) {
+        return 0;
+    }
+
+    function swap(
+        address,
+        bool,
+        int256,
+        uint160,
+        bytes calldata data
+    ) external override returns (int256, int256) {
+        IEvxSwapCallback(msg.sender).evxSwapCallback(0, 0, data);
+        return (0, 0);
+    }
+
+    function observe(uint32[] calldata) external pure override returns (int56[] memory, uint160[] memory) {}
+    function factory() external pure override returns (address) { return address(0); }
+    function fee() external pure override returns (uint24) { return 3000; }
+    function collectProtocol(address, uint128, uint128) external pure returns (uint128, uint128) {}
+    function setFeeProtocol(uint8, uint8) external {}
+    function snapshotCumulativesInside(int24, int24) external pure returns (int56, uint160, uint32) {}
+    function maxLiquidityPerTick() external pure override returns (uint128) { return 0; }
+    function observations(uint256) external pure override returns (uint32, int56, uint160, bool) {}
+    function ticks(int24) external pure override returns (uint128, int128, uint256, uint256, int56, uint160, uint32, bool) {}
+    function positions(bytes32) external pure returns (uint128, uint256, uint256, uint128, uint128) {}
+    function feeGrowthGlobal0X128() external pure override returns (uint256) { return 0; }
+    function feeGrowthGlobal1X128() external pure override returns (uint256) { return 0; }
+    function protocolFees() external pure override returns (uint128, uint128) { return (0, 0); }
+    function initializeObservation(uint160) external override {}
+    function mint(address, int24, int24, uint128, bytes calldata) external pure returns (uint256, uint256) {}
+    function collect(address, int24, int24, uint128, uint128) external pure returns (uint128, uint128) {}
+    function burn(int24, int24, uint128) external pure returns (uint256, uint256) {}
+    function flash(address, uint256, uint256, bytes calldata) external {}
+    function increaseObservationCardinalityNext(uint16) external {}
+}
+
+/**
+ * @notice Mock pool that reverts with raw Panic(0x11) during swap (opaque core failure)
+ */
+contract MockPoolRawPanic is IEvxPool {
+    address private _token0;
+    address private _token1;
+
+    function setTokens(address token0_, address token1_) external {
+        _token0 = token0_;
+        _token1 = token1_;
+    }
+
+    function token0() external view override returns (address) {
+        return _token0;
+    }
+
+    function token1() external view override returns (address) {
+        return _token1;
+    }
+
+    function slot0()
+        external
+        pure
+        override
+        returns (uint160, int24, uint16, uint16, uint16, uint8, bool)
+    {
+        return (uint160(FixedPoint96.Q96), 0, 0, 0, 0, 0, true);
+    }
+
+    function tickBitmap(int16) external pure override returns (uint256) {
+        return 0;
+    }
+
+    function tickSpacing() external pure override returns (int24) {
+        return 60;
+    }
+
+    function swap(address, bool, int256, uint160, bytes calldata)
+        external
+        pure
+        override
+        returns (int256, int256)
+    {
+        assembly {
+            let ptr := mload(0x40)
+            mstore(ptr, 0x4e487b7100000000000000000000000000000000000000000000000000000000)
+            mstore(add(ptr, 0x04), 0x11)
+            revert(ptr, 0x24)
+        }
+    }
+
+    function observe(uint32[] calldata) external pure override returns (int56[] memory, uint160[] memory) {}
+    function liquidity() external pure override returns (uint128) {
+        return 0;
+    }
+    function factory() external pure override returns (address) {
+        return address(0);
+    }
+    function fee() external pure override returns (uint24) {
+        return 3000;
+    }
+    function collectProtocol(address, uint128, uint128) external pure returns (uint128, uint128) {}
+    function setFeeProtocol(uint8, uint8) external {}
+    function snapshotCumulativesInside(int24, int24) external pure returns (int56, uint160, uint32) {}
+    function maxLiquidityPerTick() external pure override returns (uint128) {
+        return 0;
+    }
+    function observations(uint256) external pure override returns (uint32, int56, uint160, bool) {}
+    function ticks(int24)
+        external
+        pure
+        override
+        returns (uint128, int128, uint256, uint256, int56, uint160, uint32, bool)
+    {}
+    function positions(bytes32) external pure returns (uint128, uint256, uint256, uint128, uint128) {}
+    function feeGrowthGlobal0X128() external pure override returns (uint256) {
+        return 0;
+    }
+    function feeGrowthGlobal1X128() external pure override returns (uint256) {
+        return 0;
+    }
+    function protocolFees() external pure override returns (uint128, uint128) {
+        return (0, 0);
+    }
+    function initializeObservation(uint160) external override {}
+    function mint(address, int24, int24, uint128, bytes calldata) external pure returns (uint256, uint256) {}
+    function collect(address, int24, int24, uint128, uint128) external pure returns (uint128, uint128) {}
+    function burn(int24, int24, uint128) external pure returns (uint256, uint256) {}
+    function flash(address, uint256, uint256, bytes calldata) external {}
+    function increaseObservationCardinalityNext(uint16) external {}
+}
+
+/// @notice Forces AD-26 custom errors for emitibility asserts (not Panic→ArithmeticInternal)
+contract QuoterErrorEmitter {
+    function emitZeroLiquidity() external pure {
+        revert ZeroLiquidity();
+    }
+
+    function emitInsufficientLiquidity() external pure {
+        revert InsufficientLiquidity();
+    }
+
+    function emitInvalidRoute() external pure {
+        revert InvalidRoute();
+    }
+
+    function emitArithmeticInternal() external pure {
+        revert ArithmeticInternal();
+    }
 }

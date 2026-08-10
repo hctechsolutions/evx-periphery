@@ -53,7 +53,7 @@ contract Quoter is IQuoter, IEvxSwapCallback, PeripheryImmutableState {
     ) private view returns (IEvxPool) {
         address poolAddress = IEvxFactory(factory).getPool(tokenA, tokenB, fee);
         if (poolAddress == address(0)) {
-            revert PoolNotFound(tokenA, tokenB, fee);
+            revert InvalidRoute();
         }
         return IEvxPool(poolAddress);
     }
@@ -64,10 +64,11 @@ contract Quoter is IQuoter, IEvxSwapCallback, PeripheryImmutableState {
         int256 amount1Delta,
         bytes memory path
     ) external view override {
-        if (amount0Delta == 0 && amount1Delta == 0) revert NoOpSwap();
+        // AD-26 zero_liquidity: swap produced no token deltas
+        if (amount0Delta == 0 && amount1Delta == 0) revert ZeroLiquidity();
 
-        // Validate that amounts are not type(int256).min to prevent panic during uint256 conversion
-        // This typically indicates insufficient or zero liquidity in the pool
+        // RCA Story 7.1: type(int256).min previously caused Panic(0x11) on uint256(-delta).
+        // Determined cause = insufficient_liquidity (not arithmetic_internal).
         if (amount0Delta == type(int256).min || amount1Delta == type(int256).min) {
             revert InsufficientLiquidity();
         }
@@ -123,14 +124,31 @@ contract Quoter is IQuoter, IEvxSwapCallback, PeripheryImmutableState {
         )
     {
         if (reason.length != 96) {
-            // If we have at least 4 bytes (error selector), preserve the original error
-            // This allows us to extract errors even when they have no arguments (like NoLiquidity)
             if (reason.length >= 4) {
-                // Wrap the pool error in our custom error to preserve context
-                // This works for errors with or without arguments
+                bytes4 selector;
+                assembly {
+                    selector := mload(add(reason, 0x20))
+                }
+                // Bubble known AD-26 / quoter causes — do not wrap (would destroy causal type).
+                // Prohibited: mapping Panic(0x11) → ArithmeticInternal here.
+                // Also re-bubble existing PoolQuoteFailed to avoid double-wrap.
+                if (
+                    selector == ZeroLiquidity.selector ||
+                    selector == InsufficientLiquidity.selector ||
+                    selector == InvalidRoute.selector ||
+                    selector == ArithmeticInternal.selector ||
+                    selector == NoOpSwap.selector ||
+                    selector == PoolNotFound.selector ||
+                    selector == OutputAmountMismatch.selector ||
+                    selector == PoolQuoteFailed.selector
+                ) {
+                    assembly {
+                        revert(add(reason, 0x20), mload(reason))
+                    }
+                }
+                // Opaque / Panic / unknown selector — keep wrapper; remains unclassified (no AD-26).
                 revert PoolQuoteFailed(reason);
             }
-            // Only use InsufficientRevertData if we truly don't have enough data (less than selector)
             revert InsufficientRevertData(reason.length);
         }
         return abi.decode(reason, (uint256, uint160, int24));
