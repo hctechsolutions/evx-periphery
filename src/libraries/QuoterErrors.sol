@@ -31,6 +31,8 @@ error InsufficientRevertData(uint256 length);
 error PoolQuoteFailed(bytes reason);
 
 /// @notice Pool does not exist for the given token pair and fee
+/// @dev Legacy selector. Runtime getPool emits InvalidRoute() when the pool is missing.
+///      SDK maps PoolNotFound → invalid_route (alias). Do not delete from ABI.
 /// @param tokenA The first token address
 /// @param tokenB The second token address
 /// @param fee The fee tier

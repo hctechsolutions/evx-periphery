@@ -53,6 +53,7 @@ contract Quoter is IQuoter, IEvxSwapCallback, PeripheryImmutableState {
     ) private view returns (IEvxPool) {
         address poolAddress = IEvxFactory(factory).getPool(tokenA, tokenB, fee);
         if (poolAddress == address(0)) {
+            // Runtime emit = InvalidRoute; PoolNotFound is legacy (SDK alias).
             revert InvalidRoute();
         }
         return IEvxPool(poolAddress);
