@@ -39,8 +39,17 @@ library SqrtPriceMath {
 
         if (add) {
             uint256 product;
-            if ((product = amount * sqrtPX96) / amount == sqrtPX96) {
-                uint256 denominator = numerator1 + product;
+            // 0.8 port: Uniswap 0.7 relied on wrap-on-overflow to take the UnsafeMath fallback.
+            // Assignment must be unchecked; the equality test still detects wrap.
+            unchecked {
+                product = amount * sqrtPX96;
+            }
+            if (product / amount == sqrtPX96) {
+                uint256 denominator;
+                // 0.8 port: Uniswap 0.7 wrapped this add and used the comparison as overflow detect.
+                unchecked {
+                    denominator = numerator1 + product;
+                }
                 if (denominator >= numerator1)
                     // always fits in 160 bits
                     return uint160(FullMath.mulDivRoundingUp(numerator1, sqrtPX96, denominator));
@@ -51,7 +60,10 @@ library SqrtPriceMath {
             uint256 product;
             // if the product overflows, we know the denominator underflows
             // in addition, we must check that the denominator does not underflow
-            require((product = amount * sqrtPX96) / amount == sqrtPX96 && numerator1 > product);
+            unchecked {
+                product = amount * sqrtPX96;
+            }
+            require(product / amount == sqrtPX96 && numerator1 > product);
             uint256 denominator = numerator1 - product;
             return FullMath.mulDivRoundingUp(numerator1, sqrtPX96, denominator).toUint160();
         }

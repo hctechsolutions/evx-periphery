@@ -93,9 +93,13 @@ contract Quoter is IQuoter, IEvxSwapCallback, PeripheryImmutableState {
                 revert(ptr, 96)
             }
         } else {
-            // If the cache has been populated, ensure that the full output amount has been received
-            if (amountOutCached != 0 && amountReceived != amountOutCached) {
-                revert OutputAmountMismatch(amountOutCached, amountReceived);
+            // Exact-out: curve did not cover the cached amount → economic insufficient_liquidity.
+            // OutputAmountMismatch remains only when received > cached (internal bug, not economy).
+            if (amountOutCached != 0) {
+                if (amountReceived < amountOutCached) revert InsufficientLiquidity();
+                if (amountReceived != amountOutCached) {
+                    revert OutputAmountMismatch(amountOutCached, amountReceived);
+                }
             }
             assembly {
                 let ptr := mload(0x40)
@@ -188,6 +192,37 @@ contract Quoter is IQuoter, IEvxSwapCallback, PeripheryImmutableState {
         return (amount, sqrtPriceX96After, initializedTicksCrossed, gasEstimate);
     }
 
+    /// @dev ZeroLiquidity only when the pool exists, in-range L is 0, and no initialized tick
+    ///      is reachable in the swap direction (core TickBitmap next-initialized-tick semantics).
+    function _revertIfUnusableLiquidity(IEvxPool pool, bool zeroForOne) private view {
+        if (pool.liquidity() != 0) return;
+        if (!_hasReachableInitializedTick(pool, zeroForOne)) revert ZeroLiquidity();
+    }
+
+    /// @dev Walks the same one-word steps EvxPool.swap uses. Not a second bitmap engine.
+    function _hasReachableInitializedTick(IEvxPool pool, bool zeroForOne) private view returns (bool) {
+        (, int24 tick, , , , , ) = pool.slot0();
+        int24 tickSpacing = pool.tickSpacing();
+        // Off-chain only — no word cap. EvxPool.swap has none; a 256-word ceiling
+        // falsely emits ZeroLiquidity when liquidity sits beyond ~655k ticks (fee 500).
+        for (;;) {
+            int16 wordPos = TickBitmap.nextInitializedTickWordPos(tick, tickSpacing, zeroForOne);
+            uint256 word = pool.tickBitmap(wordPos);
+            (int24 next, bool initialized) =
+                TickBitmap.nextInitializedTickWithinOneWord(word, tick, tickSpacing, zeroForOne);
+            if (next < TickMath.MIN_TICK) {
+                next = TickMath.MIN_TICK;
+            } else if (next > TickMath.MAX_TICK) {
+                next = TickMath.MAX_TICK;
+            }
+            if (initialized) return true;
+            if (next == TickMath.MIN_TICK || next == TickMath.MAX_TICK) return false;
+            int24 advanced = zeroForOne ? next - 1 : next;
+            if (advanced == tick) return false;
+            tick = advanced;
+        }
+    }
+
     /// @inheritdoc IQuoter
     function quoteExactInputSingle(QuoteExactInputSingleParams memory params)
         public
@@ -209,6 +244,8 @@ contract Quoter is IQuoter, IEvxSwapCallback, PeripheryImmutableState {
         // zeroForOne = false means swapping token1 -> token0
         bool zeroForOne = params.tokenIn == token0;
 
+        _revertIfUnusableLiquidity(pool, zeroForOne);
+
         uint256 gasBefore = gasleft();
         try
             pool.swap(
@@ -224,6 +261,8 @@ contract Quoter is IQuoter, IEvxSwapCallback, PeripheryImmutableState {
             gasEstimate = gasBefore - gasleft();
             return handleRevert(reason, pool, gasEstimate);
         }
+        // Quote must come from the callback revert. Silent success with zeros is not a quote.
+        revert PoolQuoteFailed("");
     }
 
     /// @inheritdoc IQuoter
@@ -292,6 +331,8 @@ contract Quoter is IQuoter, IEvxSwapCallback, PeripheryImmutableState {
         // zeroForOne = false means swapping token1 -> token0
         bool zeroForOne = params.tokenIn == token0;
 
+        _revertIfUnusableLiquidity(pool, zeroForOne);
+
         // If no price limit has been specified, cache the output amount for comparison in the swap callback
         if (params.sqrtPriceLimitX96 == 0) amountOutCached = params.amount;
         uint256 gasBefore = gasleft();
@@ -310,6 +351,8 @@ contract Quoter is IQuoter, IEvxSwapCallback, PeripheryImmutableState {
             if (params.sqrtPriceLimitX96 == 0) delete amountOutCached;
             return handleRevert(reason, pool, gasEstimate);
         }
+        if (params.sqrtPriceLimitX96 == 0) delete amountOutCached;
+        revert PoolQuoteFailed("");
     }
 
     /// @inheritdoc IQuoter

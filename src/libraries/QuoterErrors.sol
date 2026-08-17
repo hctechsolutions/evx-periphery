@@ -9,7 +9,10 @@ pragma solidity ^0.8.20;
 /// @dev Prefer ZeroLiquidity for AD-26 surface; kept for backwards compatibility of selector consumers
 error NoOpSwap();
 
-/// @notice Pool has zero in-range liquidity / swap produced no amounts (AD-26: zero_liquidity)
+/// @notice Pool has no usable liquidity on the route (AD-26: zero_liquidity)
+/// @dev Emitted before pool.swap when liquidity()==0 at the current tick AND no initialized tick
+///      is reachable in the swap direction (core TickBitmap). Not inferred from callback (0,0)
+///      as the acceptance path, and never from core NoLiquidity (flash-only).
 error ZeroLiquidity();
 
 /// @notice Exact output swap received different amount than expected
@@ -36,11 +39,11 @@ error PoolNotFound(address tokenA, address tokenB, uint24 fee);
 /// @notice Route/pool selection is invalid (AD-26: invalid_route)
 error InvalidRoute();
 
-/// @notice Insufficient liquidity in the pool to complete the quote (AD-26: insufficient_liquidity)
-/// @dev Thrown when the pool returns type(int256).min which would Panic during uint256 conversion.
-///      RCA Task 0A (reproducible mechanism, not identity with residual/prod Panic path §B):
-///      Quoter.evxSwapCallback `uint256(-amountDelta)` with amountDelta == type(int256).min
-///      → cause = insufficient_liquidity.
+/// @notice Insufficient liquidity to complete the quote (AD-26: insufficient_liquidity)
+/// @dev Two known causes, same code:
+///      1. Economy: exact-out amount the curve cannot cover (received < cached).
+///      2. Mechanism 0A: pool callback returns type(int256).min (unsafe uint256 negation).
+///      Not a label for Panic(0x11) / port arithmetic.
 error InsufficientLiquidity();
 
 /// @notice Protocol determined the failure is internal math/invariant (AD-26: arithmetic_internal)

@@ -57,7 +57,9 @@ contract MockPool is IEvxPool {
     /* -------- ABRIDGED: Unused core functions ----- */
     // prettier-ignore
     function observe(uint32[] calldata) external view override returns (int56[] memory, uint160[] memory) {}
-    function liquidity() external view override returns (uint128) {}
+    function liquidity() external view override returns (uint128) {
+        return 1e18; // mock callback tests must not trip the real-pool zero_liquidity short-circuit
+    }
     function factory() external view override returns (address) {}
     
     address private _token0;
@@ -685,11 +687,8 @@ contract QuoterTest is Test {
     /**
      * @notice Extreme amountDelta / int256.min coverage lives in test_InsufficientLiquidity_*
      *         and test_RCA_Int256Min_*. Zero-delta AD-26 path: test_ZeroLiquidity_FromZeroDeltas_QuotePath.
-     *         Core NoLiquidity → tipagem: handoff 7.2.
+     *         Core NoLiquidity → not mapped (flash-only). Real zero-L: QuoterOracle AC #2.
      */
-    function test_DivisionByZeroWithZeroLiquidity() external {
-        vm.skip(true);
-    }
 }
 
 /**
@@ -774,7 +773,7 @@ contract MockPoolPanic is IEvxPool {
     
     // Minimal stubs required by IEvxPool
     function observe(uint32[] calldata) external pure override returns (int56[] memory, uint160[] memory) {}
-    function liquidity() external pure override returns (uint128) { return 0; }
+    function liquidity() external pure override returns (uint128) { return 1; }
     function factory() external pure override returns (address) { return address(0); }
     function fee() external pure override returns (uint24) { return 3000; }
     function collectProtocol(address, uint128, uint128) external pure returns (uint128, uint128) {}
@@ -1007,7 +1006,7 @@ contract MockPoolRawPanic is IEvxPool {
 
     function observe(uint32[] calldata) external pure override returns (int56[] memory, uint160[] memory) {}
     function liquidity() external pure override returns (uint128) {
-        return 0;
+        return 1;
     }
     function factory() external pure override returns (address) {
         return address(0);

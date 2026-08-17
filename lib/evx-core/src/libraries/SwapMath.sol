@@ -62,18 +62,22 @@ library SwapMath {
                 );
             }
         } else {
+            // 0A domain: negation of int256.min panics in 0.8. Guard explicitly — do not unchecked-wrap.
+            require(amountRemaining != type(int256).min);
+            uint256 amountRemainingAbs = uint256(-amountRemaining);
+
             // Compute how much output is needed to reach the target price
             amountOut = zeroForOne
                 ? SqrtPriceMath.getAmount1Delta(sqrtRatioTargetX96, sqrtRatioCurrentX96, liquidity, false)
                 : SqrtPriceMath.getAmount0Delta(sqrtRatioCurrentX96, sqrtRatioTargetX96, liquidity, false);
 
-            if (uint256(-amountRemaining) >= amountOut) {
+            if (amountRemainingAbs >= amountOut) {
                 sqrtRatioNextX96 = sqrtRatioTargetX96;
             } else {
                 sqrtRatioNextX96 = SqrtPriceMath.getNextSqrtPriceFromOutput(
                     sqrtRatioCurrentX96,
                     liquidity,
-                    uint256(-amountRemaining),
+                    amountRemainingAbs,
                     zeroForOne
                 );
             }
@@ -100,6 +104,7 @@ library SwapMath {
 
         // Adjust output if it exceeds the amount specified
         if (!exactIn && amountOut > uint256(-amountRemaining)) {
+            // amountRemaining != int256.min already required in the exact-out branch
             amountOut = uint256(-amountRemaining);
         }
 

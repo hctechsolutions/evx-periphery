@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "toleranceWeiDefault": 0,
+  "note": "Normative quote fixture. expected comes from QuoteSwapMathRef on the same initial state. Not OracleLibrary.getQuoteAtTick.",
+  "vectors": [
+    {
+      "id": "tick0-exact-in-0for1",
+      "side": "exactIn",
+      "zeroForOne": true,
+      "fee": 3000,
+      "tickSpacing": 60,
+      "sqrtPriceX96": "79228162514264337593543950336",
+      "tick": 0,
+      "ticksMinted": [{ "lo": -60000, "hi": 60000, "L": "1000000000000000000" }],
+      "amountIn": "1000000",
+      "expected": { "amountIn": "1000000", "amountOut": "996999", "fee": "3000" },
+      "toleranceWei": 0
+    },
+    {
+      "id": "tick0-exact-in-1for0",
+      "side": "exactIn",
+      "zeroForOne": false,
+      "fee": 3000,
+      "tickSpacing": 60,
+      "amountIn": "1000000",
+      "expected": { "amountIn": "1000000", "amountOut": "996999", "fee": "3000" },
+      "toleranceWei": 0
+    },
+    {
+      "id": "tick0-exact-out-0for1",
+      "side": "exactOut",
+      "zeroForOne": true,
+      "fee": 3000,
+      "amountOut": "1000000",
+      "expected": { "amountIn": "1003011", "amountOut": "1000000", "fee": "3010" },
+      "toleranceWei": 0
+    },
+    {
+      "id": "tick0-exact-out-1for0",
+      "side": "exactOut",
+      "zeroForOne": false,
+      "fee": 3000,
+      "amountOut": "1000000",
+      "expected": { "amountIn": "1003011", "amountOut": "1000000", "fee": "3010" },
+      "toleranceWei": 0
+    },
+    {
+      "id": "tick-cross-exact-in-1for0",
+      "side": "exactIn",
+      "zeroForOne": false,
+      "fee": 3000,
+      "ticksMinted": [{ "lo": -60, "hi": 60, "L": "1000000000000000000" }],
+      "amountIn": "1000000000000000000",
+      "expected": {
+        "amountIn": "3013394245478362",
+        "amountOut": "2995354955910780",
+        "fee": "9040182736436"
+      },
+      "expectedState": {
+        "sqrtPriceX96": "1461446703485210103287273052203988822378723970341",
+        "tick": 887271,
+        "liquidity": "0"
+      },
+      "toleranceWei": 0
+    },
+    {
+      "id": "exact-in-overquote-thin",
+      "side": "exactIn",
+      "zeroForOne": true,
+      "ticksMinted": [{ "lo": -60, "hi": 60, "L": "1000000000000" }],
+      "amountIn": "100000000000000000000",
+      "expected": {
+        "amountIn": "3013394246",
+        "amountOut": "2995354955",
+        "fee": "9040183"
+      },
+      "toleranceWei": 0
+    }
+  ]
+}

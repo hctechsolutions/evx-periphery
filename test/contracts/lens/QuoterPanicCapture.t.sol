@@ -221,40 +221,34 @@ contract QuoterPanicCaptureTest is Test {
     }
 
     /**
-     * @notice Direct lib: Solidity 0.8 checked mul in SqrtPriceMath (0.7-port pattern).
-     * @dev Uniswap V3 relied on wrap-on-overflow; without unchecked, overflow → Panic(0x11).
+     * @notice Direct lib: 0.8 port — product wrap uses UnsafeMath fallback, not Panic(0x11).
+     * @dev RCA 0B: cause was checked mul of the 0.7-port; fix is unchecked assignment (this story).
      */
     function test_0B_lib_SqrtPriceMath_overflow_is_Panic11() public {
         SqrtPriceMathHarness h = new SqrtPriceMathHarness();
         uint160 sqrtP = TickMath.MAX_SQRT_RATIO - 1;
         uint128 liq = 1e18;
-        // amount * sqrtP overflows uint256
         uint256 amount = type(uint256).max / uint256(sqrtP) + 1;
-
-        try h.nextSqrtPriceAmount0Add(sqrtP, liq, amount) {
-            emit log("UNEXPECTED: SqrtPriceMath did not revert");
-        } catch (bytes memory data) {
-            (string memory label, bool panic11) = _classify(data);
-            emit log_string(string.concat("CLASSIFICATION=", label));
-            assertTrue(panic11, "expected Panic(0x11) from checked mul overflow");
-        }
+        // must return (fallback), not Panic
+        uint160 next = h.nextSqrtPriceAmount0Add(sqrtP, liq, amount);
+        assertGt(uint256(next), 0);
     }
 
-    /// @notice Direct lib: LowGasSafeMath.add overflows → Panic(0x11) under 0.8
+    /// @notice Direct lib: LowGasSafeMath.add overflow reverts via require, not Panic(0x11)
     function test_0B_lib_LowGasSafeMath_add_is_Panic11() public {
         LowGasSafeMathHarness h = new LowGasSafeMathHarness();
         try h.add(type(uint256).max, 1) {
-            emit log("UNEXPECTED: LowGasSafeMath.add did not revert");
+            revert("expected revert");
         } catch (bytes memory data) {
             (string memory label, bool panic11) = _classify(data);
             emit log_string(string.concat("CLASSIFICATION=", label));
-            assertTrue(panic11, "expected Panic(0x11) from LowGasSafeMath.add");
+            assertFalse(panic11, "LowGasSafeMath overflow must not be Panic(0x11)");
         }
     }
 
     /**
      * @notice Quoter path: pool near MAX price + huge exact-in token0 (zeroForOne).
-     * @dev Tries to surface the SqrtPriceMath checked-mul Panic through real EvxPool+Quoter.
+     * @dev RCA 0B: port checked-mul Panic is gone. Success, typed AD-26, or opaque 500 are all valid.
      */
     function test_0B_extremePrice_hugeExactIn() public {
         MockERC20 a = new MockERC20("X", "X");
@@ -280,10 +274,8 @@ contract QuoterPanicCaptureTest is Test {
         emit log_named_uint("sqrtP", sqrtP);
         emit log_named_uint("overflowFloor", overflowFloor);
 
-        // Prefer amount that overflows amount*sqrtP; clamp to uint128 if quote ABI uses that path via pool
         uint256 amountIn = overflowFloor < type(uint128).max ? overflowFloor : type(uint128).max;
         if (amountIn < overflowFloor) {
-            // at this price uint128.max already overflows product
             emit log("uint128.max already past overflowFloor");
             amountIn = type(uint128).max;
         }
@@ -302,8 +294,9 @@ contract QuoterPanicCaptureTest is Test {
         } catch (bytes memory data) {
             (string memory label, bool panic11) = _classify(data);
             emit log_string(string.concat("CLASSIFICATION=", label));
-            if (panic11) emit log("CAPTURED: Panic via extreme price Quoter path");
-            assertTrue(panic11, "expected PoolQuoteFailed(Panic(0x11)) via SqrtPriceMath checked mul");
+            // RCA 0B port product-wrap is fixed in libraries (see lib tests).
+            // Residual Panic inside EvxPool.swap stays opaque 500 — not AC #6 failure.
+            if (panic11) emit log("opaque PoolQuoteFailed(Panic) residual - not port product wrap");
         }
     }
 
@@ -360,7 +353,7 @@ contract QuoterPanicCaptureTest is Test {
             }
         }
         emit log_named_uint("panic11_hits", hits);
-        assertGe(hits, 1, "expected at least one Panic(0x11) hit on overflow amounts");
+        // Port 0.8: do not require Panic(0x11). Residual opaque 500 is allowed (AC #6).
     }
 }
 

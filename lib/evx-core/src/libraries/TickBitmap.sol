@@ -54,13 +54,50 @@ library TickBitmap {
         int24 tickSpacing,
         bool  lte
     ) internal view returns (int24 next, bool initialized) {
+        return nextInitializedTickWithinOneWord(
+            self[nextInitializedTickWordPos(tick, tickSpacing, lte)],
+            tick,
+            tickSpacing,
+            lte
+        );
+    }
+
+    /**
+     * @notice Word index that `nextInitializedTickWithinOneWord` will read for this tick/direction.
+     * @dev Same compression + position as the storage overload. Callers that cannot access the
+     *      mapping (e.g. Quoter) fetch `pool.tickBitmap(wordPos)` and pass the word to the pure overload.
+     */
+    function nextInitializedTickWordPos(
+        int24 tick,
+        int24 tickSpacing,
+        bool lte
+    ) internal pure returns (int16 wordPos) {
+        int24 compressed = tick / tickSpacing;
+        if (tick < 0 && tick % tickSpacing != 0) compressed--; // floor toward −∞
+        if (lte) {
+            (wordPos,) = position(compressed);
+        } else {
+            (wordPos,) = position(compressed + 1);
+        }
+    }
+
+    /**
+     * @notice Same search as the storage overload, given a pre-fetched bitmap word.
+     * @dev One engine — bit math is not duplicated in callers.
+     */
+    function nextInitializedTickWithinOneWord(
+        uint256 word,
+        int24 tick,
+        int24 tickSpacing,
+        bool lte
+    ) internal pure returns (int24 next, bool initialized) {
         int24 compressed = tick / tickSpacing;
         if (tick < 0 && tick % tickSpacing != 0) compressed--; // floor toward −∞
 
         if (lte) {
-            (int16 wordPos, uint8 bitPos) = position(compressed);
+            (, uint8 bitPos) = position(compressed);
             uint256 mask   = (uint256(1) << bitPos) + ((uint256(1) << bitPos) - 1);
-            uint256 masked = self[wordPos] & mask;
+            uint256 masked = word & mask;
 
             initialized = masked != 0;
             if (initialized) {
@@ -72,9 +109,9 @@ library TickBitmap {
                 next = (compressed - int24(diff)) * tickSpacing;
             }
         } else {
-            (int16 wordPos, uint8 bitPos) = position(compressed + 1);
+            (, uint8 bitPos) = position(compressed + 1);
             uint256 mask   = ~((uint256(1) << bitPos) - 1);
-            uint256 masked = self[wordPos] & mask;
+            uint256 masked = word & mask;
 
             initialized = masked != 0;
             if (initialized) {
