@@ -6,7 +6,17 @@ pragma solidity ^0.8.20;
  * @notice Unit tests for the PoolAddress library
  */
 import "forge-std/Test.sol";
+import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {EvxFactory} from "@evx-core/contracts/EvxFactory.sol";
+import {EvxPool} from "@evx-core/contracts/EvxPool.sol";
+import {IEvxFactory} from "@evx-core/interfaces/IEvxFactory.sol";
 import {PoolAddress} from "@evx-periphery/libraries/PoolAddress.sol";
+
+contract ResolveCaller {
+    function resolve(address factory, PoolAddress.PoolKey calldata key) external view returns (address) {
+        return PoolAddress.resolve(factory, key);
+    }
+}
 
 contract PoolAddressTest is Test {
     /* -------------------------------------------------------------------------- */
@@ -48,7 +58,7 @@ contract PoolAddressTest is Test {
      *         and reversing input token order (while using `getPoolKey`)
      *         must yield the identical pool address.
      */
-    function testComputeAddressDeterministic() external pure {
+    function testComputeAddressDeterministic() external view {
         PoolAddress.PoolKey memory key1 =
             PoolAddress.getPoolKey(TOKEN_A, TOKEN_B, FEE);
         PoolAddress.PoolKey memory key2 =
@@ -65,7 +75,7 @@ contract PoolAddressTest is Test {
     /**
      * @notice Library result must equal the manual CREATE2 hash.
      */
-    function testComputeAddressMatchesManualHash() external pure {
+    function testComputeAddressMatchesManualHash() external view {
         PoolAddress.PoolKey memory key =
             PoolAddress.getPoolKey(TOKEN_A, TOKEN_B, FEE);
 
@@ -103,5 +113,41 @@ contract PoolAddressTest is Test {
 
         vm.expectRevert();
         PoolAddress.computeAddress(FACTORY, badKey);
+    }
+
+    /// @notice Live factory prediction matches OpenZeppelin's clone address.
+    function testComputeAddressMatchesClonePrediction() external {
+        EvxPool implementation = new EvxPool();
+        EvxFactory factory = new EvxFactory(address(implementation));
+        PoolAddress.PoolKey memory key = PoolAddress.getPoolKey(TOKEN_A, TOKEN_B, FEE);
+
+        address predicted = PoolAddress.computeAddress(address(factory), key);
+        bytes32 salt = keccak256(abi.encodePacked(key.token0, key.token1, key.fee));
+        address fromClones = Clones.predictDeterministicAddress(
+            address(implementation),
+            salt,
+            address(factory)
+        );
+
+        assertEq(predicted, fromClones, "clone prediction mismatch");
+        assertEq(PoolAddress.resolve(address(factory), key), predicted, "empty registry");
+    }
+
+    /// @notice A registry entry that is not the predicted clone is rejected.
+    /// forge-config: default.allow_internal_expect_revert = true
+    function testResolveRevertsWhenRegistryDisagrees() external {
+        EvxPool implementation = new EvxPool();
+        EvxFactory factory = new EvxFactory(address(implementation));
+        PoolAddress.PoolKey memory key = PoolAddress.getPoolKey(TOKEN_A, TOKEN_B, FEE);
+
+        vm.mockCall(
+            address(factory),
+            abi.encodeWithSelector(IEvxFactory.getPool.selector, key.token0, key.token1, key.fee),
+            abi.encode(address(0x1234))
+        );
+
+        ResolveCaller caller = new ResolveCaller();
+        vm.expectRevert(PoolAddress.RegistryMismatch.selector);
+        caller.resolve(address(factory), key);
     }
 }

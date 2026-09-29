@@ -21,7 +21,14 @@ contract PeripheryPaymentsWithFeeTest is Test {
     function setUp() public {
         weth = new MockWETH();
         usdc = new MockERC20("USDC", "USDC");
-        harness = new PaymentsWithFeeHarness(address(0xFACADE), address(weth));
+        address factory = address(0xFACADE);
+        vm.etch(factory, hex"00");
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(bytes4(keccak256("poolImplementation()"))),
+            abi.encode(address(0x1111))
+        );
+        harness = new PaymentsWithFeeHarness(factory, address(weth));
     }
 
     /* -------------------------------------------------------------------------- */

@@ -193,6 +193,7 @@ contract MockPool is IEvxPool {
 
 contract QuoterTest is Test {
     address internal constant FACTORY = address(0xFAc0);
+    address internal constant IMPL = address(0x1111111111111111111111111111111111111111);
     address internal constant WETH9   = address(0xC0FFEE);
 
     address internal constant TOKEN0 = 0x0000000000000000000000000000000000000001;
@@ -212,7 +213,7 @@ contract QuoterTest is Test {
                     hex"ff",
                     FACTORY,
                     salt,
-                    PoolAddress.POOL_INIT_CODE_HASH
+                    PoolAddress.initCodeHash(IMPL)
                 )
             )
         )));
@@ -236,7 +237,7 @@ contract QuoterTest is Test {
                     hex"ff",
                     FACTORY,
                     salt2,
-                    PoolAddress.POOL_INIT_CODE_HASH
+                    PoolAddress.initCodeHash(IMPL)
                 )
             )
         )));
@@ -261,6 +262,12 @@ contract QuoterTest is Test {
             FACTORY,
             abi.encodeWithSelector(IEvxFactory.getPool.selector, TOKEN1, TOKEN0, FEE),
             abi.encode(pool2)
+        );
+        vm.etch(FACTORY, hex"00");
+        vm.mockCall(
+            FACTORY,
+            abi.encodeWithSelector(IEvxFactory.poolImplementation.selector),
+            abi.encode(IMPL)
         );
 
         quoter = new Quoter(FACTORY, WETH9);
@@ -356,7 +363,7 @@ contract QuoterTest is Test {
                     hex"ff",
                     FACTORY,
                     salt,
-                    PoolAddress.POOL_INIT_CODE_HASH
+                    PoolAddress.initCodeHash(IMPL)
                 )
             )
         )));
@@ -407,7 +414,7 @@ contract QuoterTest is Test {
                     hex"ff",
                     FACTORY,
                     salt,
-                    PoolAddress.POOL_INIT_CODE_HASH
+                    PoolAddress.initCodeHash(IMPL)
                 )
             )
         )));
@@ -451,7 +458,7 @@ contract QuoterTest is Test {
                         hex"ff",
                         FACTORY,
                         salt,
-                        PoolAddress.POOL_INIT_CODE_HASH
+                        PoolAddress.initCodeHash(IMPL)
                     )
                 )
             )));
@@ -487,7 +494,7 @@ contract QuoterTest is Test {
                         hex"ff",
                         FACTORY,
                         salt2,
-                        PoolAddress.POOL_INIT_CODE_HASH
+                        PoolAddress.initCodeHash(IMPL)
                     )
                 )
             )));
@@ -525,7 +532,7 @@ contract QuoterTest is Test {
                     hex"ff",
                     FACTORY,
                     salt,
-                    PoolAddress.POOL_INIT_CODE_HASH
+                    PoolAddress.initCodeHash(IMPL)
                 )
             )
         )));
@@ -561,7 +568,7 @@ contract QuoterTest is Test {
                     hex"ff",
                     FACTORY,
                     salt,
-                    PoolAddress.POOL_INIT_CODE_HASH
+                    PoolAddress.initCodeHash(IMPL)
                 )
             )
         )));
@@ -596,7 +603,7 @@ contract QuoterTest is Test {
                     hex"ff",
                     FACTORY,
                     salt,
-                    PoolAddress.POOL_INIT_CODE_HASH
+                    PoolAddress.initCodeHash(IMPL)
                 )
             )
         )));

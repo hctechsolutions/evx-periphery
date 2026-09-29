@@ -45,6 +45,12 @@ contract LiquidityManagementTest is Test {
         // compute deterministic pool address used by LiquidityManagement
         PoolAddress.PoolKey memory key = PoolAddress.PoolKey({token0: t0, token1: t1, fee: FEE});
         address factory = address(0xBEEF);
+        vm.etch(factory, hex"00");
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(bytes4(keccak256("poolImplementation()"))),
+            abi.encode(address(0x1111))
+        );
         poolAddr = PoolAddress.computeAddress(factory, key);
 
         // Map pool code to deterministic address

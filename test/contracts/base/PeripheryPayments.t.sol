@@ -22,7 +22,14 @@ contract PeripheryPaymentsTest is Test {
     function setUp() public {
         weth = new MockWETH();
         dai = new MockERC20("DAI", "DAI");
-        payHarness = new PaymentsHarness(address(0xDEAD), address(weth));
+        address factory = address(0xDEAD);
+        vm.etch(factory, hex"00");
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(bytes4(keccak256("poolImplementation()"))),
+            abi.encode(address(0x1111))
+        );
+        payHarness = new PaymentsHarness(factory, address(weth));
     }
 
     function testUnwrapWETH9Success() public {

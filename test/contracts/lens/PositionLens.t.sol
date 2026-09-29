@@ -240,6 +240,12 @@ contract PositionLensTest is Test {
     function setUp() public {
         /* 1. mocks */
         pm   = new MockPositionManager();
+        vm.etch(FACTORY, hex"00");
+        vm.mockCall(
+            FACTORY,
+            abi.encodeWithSelector(bytes4(keccak256("poolImplementation()"))),
+            abi.encode(address(0x1111))
+        );
         lens = new PositionLens(FACTORY, address(pm), WETH_PLACEHOLDER);
 
         /* 2. endereço “oficial” que o lens espera */

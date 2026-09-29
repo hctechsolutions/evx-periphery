@@ -10,13 +10,13 @@ import { PairFlash } from "@evx-periphery/contracts/PairFlash.sol";
 import "@evx-periphery/contracts/lens/PositionLens.sol";
 import "@evx-periphery/contracts/lens/Quoter.sol";
 import { Script } from "forge-std/Script.sol";
-import { MockToken } from "./MockToken.sol";
 import "forge-std/console.sol";
 
 
 /**
  * @title DeployPeriphery
- * @notice One-shot script to deploy Evx periphery contracts + mock tokens.
+ * @notice Deploys Evx periphery against an existing factory and WETH9.
+ * @dev Mock tokens are a separate Anvil step (`DeployFixtureTokens`).
  */
 contract DeployPeriphery is Script {
     /// @dev Helper: converts a short ASCII string to a left-aligned bytes32.
@@ -37,9 +37,7 @@ contract DeployPeriphery is Script {
             PairFlash                          pairFlash,
             Quoter                             quoter,
             PositionLens                       positionLens,
-            TickLens                           tickLens,
-            address                            tokenA,
-            address                            tokenB
+            TickLens                           tickLens
         )
     {
         uint256 deployerKey     = vm.envUint("DEPLOYER_PRIVATE_KEY");
@@ -49,10 +47,6 @@ contract DeployPeriphery is Script {
         bytes32 labelBytes      = _strToBytes32(labelStr);
 
         vm.startBroadcast(deployerKey);
-
-        // Deploy mock tokens
-        tokenA = address(new MockToken("FET", "FET"));
-        tokenB = address(new MockToken("AVAX", "AVAX"));
 
         descriptor = new NonfungibleTokenPositionDescriptor(
             weth9,
@@ -92,7 +86,5 @@ contract DeployPeriphery is Script {
         console.log("DEPLOY_ADDRESS QUOTER=", address(quoter));
         console.log("DEPLOY_ADDRESS POSITION_LENS=", address(positionLens));
         console.log("DEPLOY_ADDRESS TICK_LENS=", address(tickLens));
-        console.log("DEPLOY_ADDRESS TOKEN_A_FET=", tokenA);
-        console.log("DEPLOY_ADDRESS TOKEN_B_AVAX=", tokenB);
     }
 }

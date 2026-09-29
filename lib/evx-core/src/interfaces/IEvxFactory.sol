@@ -67,6 +67,13 @@ interface IEvxFactory {
     ) external view returns (address pool);
 
     /**
+     * @notice Returns the EvxPool implementation cloned for every pool
+     * @dev Immutable for the life of the factory. Periphery derives CREATE2
+     *      pool addresses from this value.
+     */
+    function poolImplementation() external view returns (address);
+
+    /**
      * @notice Creates a new Evx pool for the given tokens and fee
      * @dev Uses deterministic CREATE2 address via token ordering and fee salt
      *      Reverts if pool exists, fee invalid, or token inputs invalid

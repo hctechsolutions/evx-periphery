@@ -18,7 +18,7 @@ contract EvxFactory is IEvxFactory, NoDelegateCall {
     mapping(address => mapping(address => mapping(uint24 => address))) public override getPool;
 
     /// @notice Implementation contract address used for pool clones
-    address public immutable poolImplementation;
+    address public immutable override poolImplementation;
 
     /**
      * @dev Initializes default fee tiers and sets deployer as owner

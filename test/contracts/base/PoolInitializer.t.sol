@@ -56,6 +56,10 @@ contract MockEvxPool is IMockEvxPool {
 contract MockEvxFactory is IMockEvxFactory {
     mapping(bytes32 => address) public pools;
 
+    function poolImplementation() external pure returns (address) {
+        return address(0x1111);
+    }
+
     function _key(address token0, address token1, uint24 fee) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked(token0, token1, fee));
     }
