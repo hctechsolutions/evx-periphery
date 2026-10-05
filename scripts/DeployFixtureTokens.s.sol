@@ -7,16 +7,18 @@ import { MockToken } from "./MockToken.sol";
 
 /**
  * @title DeployFixtureTokens
- * @notice Anvil-only ERC20 fixtures. Not part of a public-network deploy.
+ * @notice The same six ERC-20 fixtures on every supported network.
  */
 contract DeployFixtureTokens is Script {
-    function run() external returns (address tokenA, address tokenB) {
+    function run() external {
         uint256 deployerKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
         vm.startBroadcast(deployerKey);
-        tokenA = address(new MockToken("FET", "FET"));
-        tokenB = address(new MockToken("AVAX", "AVAX"));
+        console.log("DEPLOY_ADDRESS FET=", address(new MockToken("Fetch.ai", "FET")));
+        console.log("DEPLOY_ADDRESS AVAX=", address(new MockToken("Avalanche", "AVAX")));
+        console.log("DEPLOY_ADDRESS LINK=", address(new MockToken("Chainlink", "LINK")));
+        console.log("DEPLOY_ADDRESS USDC=", address(new MockToken("USD Coin", "USDC")));
+        console.log("DEPLOY_ADDRESS DAI=", address(new MockToken("Dai", "DAI")));
+        console.log("DEPLOY_ADDRESS UNI=", address(new MockToken("Uniswap", "UNI")));
         vm.stopBroadcast();
-        console.log("DEPLOY_ADDRESS TOKEN_A_FET=", tokenA);
-        console.log("DEPLOY_ADDRESS TOKEN_B_AVAX=", tokenB);
     }
 }
